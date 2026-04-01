@@ -704,6 +704,7 @@ const SUPABASE_URL  = 'https://hledcytibtbcxphiwhsn.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsZWRjeXRpYnRiY3hwaGl3aHNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwMzExNzksImV4cCI6MjA5MDYwNzE3OX0.lt0wGVYo9dmVilf_Ji6jrrEwVjCDoLEAVARAAMOXEGE';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 let currentUser = null;
+let currentSession = null;
 
 function escapeHTML(s) {
   if (s == null) return '';
@@ -1035,14 +1036,9 @@ async function doLookup() {
 
   try {
     // Get the current user's auth token to authenticate with the Edge Function
-    console.log('DEBUG: calling getSession...');
-    const sessionPromise = sb.auth.getSession();
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('getSession timed out after 5s')), 5000));
-    const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
-    console.log('DEBUG: session =', session ? 'exists' : 'null');
+    const session = currentSession;
     if (!session) { showLookupError('Please sign in to use lookup.'); return; }
 
-    console.log('DEBUG: firing fetch to edge function...');
     // Call the Supabase Edge Function — the API key never touches the browser
     const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup`, {
       method: 'POST',
@@ -1831,6 +1827,7 @@ async function migrateLocalStorage() {
 sb.auth.onAuthStateChange(async (event, session) => {
   if (session) {
     currentUser = session.user;
+    currentSession = session;
     // Show email in nav
     document.getElementById('auth-email-display').textContent = session.user.email;
     document.getElementById('auth-user').style.display = '';
@@ -1853,6 +1850,7 @@ sb.auth.onAuthStateChange(async (event, session) => {
     renderBank();
   } else {
     currentUser = null;
+    currentSession = null;
     words = [];
     updateBadge();
     document.getElementById('auth-user').style.display = 'none';
