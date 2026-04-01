@@ -1039,23 +1039,13 @@ async function doLookup() {
     const session = currentSession;
     if (!session) { showLookupError('Please sign in to use lookup.'); return; }
 
-    // Call the Supabase Edge Function — the API key never touches the browser
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': SUPABASE_ANON,
-      },
-      body: JSON.stringify({ word: input }),
+    // Call the Supabase Edge Function via the client SDK
+    const { data: raw, error: fnError } = await sb.functions.invoke('lookup', {
+      body: { word: input },
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Lookup failed (${res.status})`);
-    }
-
-    const raw = await res.json();
+    if (fnError) throw new Error(fnError.message || 'Lookup failed');
+    if (!raw) throw new Error('Empty response from lookup function');
 
     // OWASP A08 – validate and sanitize the AI response before rendering or storing.
     // Treat every AI response as untrusted input; prompt injection could craft
