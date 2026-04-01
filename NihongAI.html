@@ -10,7 +10,7 @@
     ensures the API key can only be sent to api.anthropic.com and nowhere else.
   -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src https://api.anthropic.com https://*.supabase.co; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+        content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src https://*.supabase.co; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
   <title>Japanese Vocabulary Tracker</title>
   <style>
     :root {
@@ -146,18 +146,6 @@
       font-size: 0.75rem;
       pointer-events: none;
     }
-    .api-key-warning {
-      margin-top: 14px;
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      text-align: center;
-    }
-    .api-key-warning a {
-      color: var(--accent);
-      cursor: pointer;
-      text-decoration: underline;
-    }
-
     /* LOADER */
     .loader {
       display: flex; align-items: center; gap: 10px;
@@ -505,7 +493,6 @@
       <span id="auth-email-display" class="nav-user-email"></span>
       <button class="btn btn-secondary btn-sm" onclick="signOut()">Sign out</button>
     </div>
-    <button class="icon-btn" title="API Key Settings" onclick="openSettings()">⚙</button>
   </div>
 </nav>
 
@@ -553,10 +540,6 @@
       />
       <span class="lookup-enter-hint">↵ Enter</span>
     </div>
-    <div class="api-key-warning" id="key-warning" style="display:none">
-      No API key set. <a onclick="openSettings()">Add your Claude API key</a> to enable AI lookup.
-    </div>
-
     <!-- TIPS -->
     <div id="lookup-tips">
       <div class="tips-grid">
@@ -630,29 +613,6 @@
 </div>
 
 <!-- SETTINGS MODAL -->
-<div class="modal-overlay" id="settings-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>Settings</h3>
-      <button class="modal-close" onclick="closeSettings()">✕</button>
-    </div>
-    <div class="form-group">
-      <label>Claude API Key</label>
-      <!-- maxlength guards against absurdly large pastes -->
-      <input type="password" id="api-key-input" placeholder="sk-ant-…" autocomplete="off" maxlength="300" />
-      <p style="margin-top:8px; font-size:0.8rem; color:var(--text-muted)">
-        Your key is stored only in your browser's localStorage and never sent anywhere except the Anthropic API.
-      </p>
-    </div>
-    <div style="display:flex; gap:10px; margin-top:4px;">
-      <button class="btn btn-primary" onclick="saveApiKey()">Save</button>
-      <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
-      <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="clearApiKey()">Clear Key</button>
-    </div>
-    <div id="settings-feedback" style="margin-top:10px; font-size:0.85rem;"></div>
-  </div>
-</div>
-
 <!-- EDIT MODAL -->
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
@@ -837,19 +797,6 @@ function validateLookupInput(input) {
 }
 
 /**
- * OWASP A07 – Identification and Authentication Failures
- * Validate the API key format before storing.  Anthropic keys follow the
- * pattern sk-ant-api03-…  Catching typos early saves confusing error messages.
- * Returns an error string, or null if the format looks valid.
- */
-function validateApiKey(key) {
-  if (!key || !key.trim())          return 'API key cannot be empty.';
-  if (!/^sk-ant-/.test(key))        return 'Key should start with "sk-ant-". Check you copied the full key.';
-  if (key.length < 40)              return 'Key looks too short — check you copied the full key.';
-  if (key.length > 300)             return 'Key looks too long — check you copied only the key.';
-  return null;
-}
-
 /**
  * OWASP A03 – Validate/sanitize fields from the edit form before persisting.
  * Returns an error string, or null if valid.
@@ -1058,44 +1005,6 @@ function showPage(name, btn) {
 // ============================================================
 // SETTINGS / API KEY
 // ============================================================
-function getApiKey() { return localStorage.getItem('claude_api_key') || ''; }
-function openSettings() {
-  document.getElementById('api-key-input').value = getApiKey();
-  document.getElementById('settings-feedback').textContent = '';
-  document.getElementById('settings-modal').classList.add('open');
-}
-function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
-function saveApiKey() {
-  const key = document.getElementById('api-key-input').value.trim();
-  const fb  = document.getElementById('settings-feedback');
-
-  // OWASP A07 – validate key format before persisting; catches common paste errors
-  const err = validateApiKey(key);
-  if (err) {
-    fb.style.color = 'var(--accent)';
-    fb.textContent = err;
-    return;
-  }
-
-  localStorage.setItem('claude_api_key', key);
-  fb.style.color = 'var(--success)';
-  fb.textContent = 'API key saved.';
-  checkKeyWarning();
-  setTimeout(closeSettings, 900);
-}
-function clearApiKey() {
-  localStorage.removeItem('claude_api_key');
-  document.getElementById('api-key-input').value = '';
-  const fb = document.getElementById('settings-feedback');
-  fb.style.color = 'var(--accent)';
-  fb.textContent = 'Key cleared.';
-  checkKeyWarning();
-}
-function checkKeyWarning() {
-  document.getElementById('key-warning').style.display = getApiKey() ? 'none' : '';
-}
-checkKeyWarning();
-
 // ============================================================
 // AI LOOKUP
 // ============================================================
@@ -1106,9 +1015,6 @@ async function doLookup() {
   // OWASP A03 – validate input before doing anything
   const inputErr = validateLookupInput(input);
   if (inputErr) { showLookupError(inputErr); return; }
-
-  const apiKey = getApiKey();
-  if (!apiKey) { openSettings(); return; }
 
   // OWASP A04 – enforce rate limit before hitting the API
   const rl = RateLimiter.check();
@@ -1128,82 +1034,32 @@ async function doLookup() {
   pendingResult = null;
   document.getElementById('lookup-tips').classList.add('hidden');
 
-  const systemPrompt = `You are a Japanese language expert. When the user provides a Japanese word or phrase in ANY form (dictionary form, て-form, polite form, negative form, casual speech, romaji, etc.), analyze it and return a JSON object with the following structure. Respond with ONLY the JSON, no markdown, no extra text.
-
-{
-  "input_form": "the exact form the user entered",
-  "dictionary_form": "辞書形 (plain dictionary form)",
-  "kanji": "kanji representation (same as dictionary_form if it already is kanji, or kanji version if user entered kana)",
-  "hiragana": "full hiragana reading of the dictionary form",
-  "romaji": "romaji of the dictionary form",
-  "meaning": "concise English meaning, e.g. 'to drink; to swallow'",
-  "pos": "one of: verb, noun, adjective, adverb, other",
-  "verb_type": "for verbs only: 'ru-verb (Group 2)', 'u-verb (Group 1)', or 'irregular'. null for non-verbs.",
-  "adj_type": "for adjectives only: 'i-adjective' or 'na-adjective'. null otherwise.",
-  "tags": ["JLPT N5", "JLPT N4", etc — include JLPT level if known],
-  "forms": [
-    { "label": "辞書形 (Dictionary)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "ます形 (Polite Present)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "ない形 (Negative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "ません形 (Polite Negative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "た形 (Past)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "ました形 (Polite Past)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "なかった形 (Past Negative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "て形 (Te-form)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "可能形 (Potential)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "意向形 (Volitional)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "受身形 (Passive)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "使役形 (Causative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "条件形ば (Conditional -ba)", "japanese": "…", "hiragana": "…", "romaji": "…" },
-    { "label": "条件形たら (Conditional -tara)", "japanese": "…", "hiragana": "…", "romaji": "…" }
-  ],
-  "example_sentences": [
-    { "japanese": "…", "hiragana": "…", "english": "…" },
-    { "japanese": "…", "hiragana": "…", "english": "…" },
-    { "japanese": "…", "hiragana": "…", "english": "…" }
-  ],
-  "notes": "any important usage notes, nuances, or common mistakes. Keep brief."
-}
-
-For non-verbs, "forms" should contain relevant inflections (e.g. for adjectives: plain/polite/negative/past forms; for nouns: with particles). Keep "forms" non-empty and useful for any part of speech.`;
-
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Get the current user's auth token to authenticate with the Edge Function
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showLookupError('Please sign in to use lookup.'); return; }
+
+    // Call the Supabase Edge Function — the API key never touches the browser
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1800,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: input }],
-      }),
+      body: JSON.stringify({ word: input }),
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `API error ${res.status}`);
+      throw new Error(err.error || `Lookup failed (${res.status})`);
     }
 
-    const data = await res.json();
-    const raw = data.content[0].text.trim();
-    // Strip possible ```json fences just in case the model wraps it
-    const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    let result;
-    try {
-      result = JSON.parse(jsonStr);
-    } catch {
-      throw new Error('AI returned non-JSON. Please try again.');
-    }
+    const raw = await res.json();
 
     // OWASP A08 – validate and sanitize the AI response before rendering or storing.
     // Treat every AI response as untrusted input; prompt injection could craft
     // a response that contains XSS payloads in any string field.
-    result = validateAIResponse(result);
+    const result = validateAIResponse(raw);
 
     // Only record rate-limit usage after a successful, valid response
     RateLimiter.record();
@@ -1212,7 +1068,7 @@ For non-verbs, "forms" should contain relevant inflections (e.g. for adjectives:
     renderResult(result);
     hero.classList.add('has-result');
   } catch (e) {
-    errorEl.textContent = 'Error: ' + (e.message || 'Unknown error. Check your API key and try again.');
+    errorEl.textContent = 'Error: ' + (e.message || 'Unknown error. Please try again.');
     errorEl.classList.remove('hidden');
     document.getElementById('lookup-tips').classList.remove('hidden');
   } finally {
@@ -1991,7 +1847,6 @@ sb.auth.onAuthStateChange(async (event, session) => {
       }
     }
     renderBank();
-    checkKeyWarning();
   } else {
     currentUser = null;
     words = [];
