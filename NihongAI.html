@@ -1036,7 +1036,9 @@ async function doLookup() {
   try {
     // Get the current user's auth token to authenticate with the Edge Function
     console.log('DEBUG: calling getSession...');
-    const { data: { session } } = await sb.auth.getSession();
+    const sessionPromise = sb.auth.getSession();
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('getSession timed out after 5s')), 5000));
+    const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
     console.log('DEBUG: session =', session ? 'exists' : 'null');
     if (!session) { showLookupError('Please sign in to use lookup.'); return; }
 
@@ -1429,7 +1431,7 @@ function renderTips() {
   const data = JLPT_DATA[currentJLPT];
   const picked = shuffle(data.words).slice(0, 5);
   document.getElementById('tip-chips').innerHTML = picked.map(w =>
-    `<button class="tip-chip" onclick="tryWord(${JSON.stringify(w.word)})">${escapeHTML(w.word)}<span class="tip-chip-note">${escapeHTML(w.note)}</span></button>`
+    `<button class="tip-chip" onclick='tryWord(${JSON.stringify(w.word)})'>${escapeHTML(w.word)}<span class="tip-chip-note">${escapeHTML(w.note)}</span></button>`
   ).join('');
   // data.desc / data.hint are hardcoded static strings — no escaping needed here
   document.getElementById('tips-hint-text').innerHTML =
