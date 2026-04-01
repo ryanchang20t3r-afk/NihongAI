@@ -1,0 +1,1751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <!--
+    OWASP A05 – Security Misconfiguration:
+    CSP restricts what can connect or execute. 'unsafe-inline' is required because all
+    JS/CSS lives in this single file. The key protection here is connect-src, which
+    ensures the API key can only be sent to api.anthropic.com and nowhere else.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.anthropic.com; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+  <title>Japanese Vocabulary Tracker</title>
+  <style>
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --surface2: #242424;
+      --border: #333;
+      --accent: #e84b4b;
+      --accent2: #f07070;
+      --text: #e8e8e8;
+      --text-muted: #888;
+      --success: #4caf50;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* NAV */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      height: 54px;
+      gap: 4px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    nav .logo { font-size: 1.15rem; font-weight: 700; color: var(--accent); margin-right: 20px; }
+    nav .nav-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 0.9rem; padding: 7px 14px; border-radius: var(--radius);
+      cursor: pointer; transition: all 0.15s; font-family: inherit;
+    }
+    nav .nav-btn:hover { background: var(--surface2); color: var(--text); }
+    nav .nav-btn.active { background: var(--accent); color: #fff; }
+    nav .nav-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .count-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--accent); color: #fff; border-radius: 10px;
+      font-size: 0.72rem; padding: 1px 6px; margin-left: 5px;
+    }
+    .icon-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 1.1rem; cursor: pointer; padding: 6px 8px;
+      border-radius: var(--radius); transition: all 0.15s;
+      font-family: inherit;
+    }
+    .icon-btn:hover { background: var(--surface2); color: var(--text); }
+
+    /* PAGES */
+    .page { display: none; padding: 28px 20px; max-width: 860px; margin: 0 auto; width: 100%; }
+    .page.active { display: block; }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 18px; border-radius: var(--radius); border: none;
+      cursor: pointer; font-size: 0.9rem; font-family: inherit; transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent2); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: transparent; color: #e57373; border: 1px solid #e57373; }
+    .btn-danger:hover { background: #e57373; color: #fff; }
+    .btn-sm { padding: 5px 11px; font-size: 0.82rem; }
+
+    /* INPUTS */
+    input, textarea, select {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); padding: 9px 13px;
+      font-size: 0.95rem; font-family: inherit; outline: none; transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 70px; }
+    label { display: block; margin-bottom: 5px; color: var(--text-muted); font-size: 0.85rem; }
+    .form-group { margin-bottom: 14px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 560px) { .form-row { grid-template-columns: 1fr; } }
+
+    /* ===== LOOKUP PAGE ===== */
+    .lookup-hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 60px;
+      transition: padding-top 0.4s ease;
+    }
+    .lookup-hero.has-result { padding-top: 20px; }
+    .lookup-title {
+      font-size: 1rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      letter-spacing: 0.5px;
+    }
+    .lookup-box-wrap {
+      width: 100%;
+      max-width: 540px;
+      position: relative;
+    }
+    #lookup-input {
+      width: 100%;
+      font-size: 1.6rem;
+      padding: 18px 56px 18px 22px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+    #lookup-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(232,75,75,0.15);
+    }
+    #lookup-input::placeholder { color: #444; font-size: 1.2rem; }
+    .lookup-enter-hint {
+      position: absolute;
+      right: 16px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      pointer-events: none;
+    }
+    .api-key-warning {
+      margin-top: 14px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .api-key-warning a {
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    /* LOADER */
+    .loader {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--text-muted); font-size: 0.9rem;
+      margin-top: 32px;
+    }
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* RESULT CARD */
+    .result-card {
+      width: 100%;
+      max-width: 700px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      margin-top: 28px;
+    }
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      gap: 16px;
+    }
+    .result-word-block { flex: 1; }
+    .result-kanji { font-size: 2.4rem; font-weight: 700; line-height: 1.1; }
+    .result-dict-form {
+      font-size: 0.8rem; color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .result-dict-form span { color: var(--text); font-weight: 600; }
+    .result-reading { font-size: 1rem; color: var(--text-muted); margin-top: 6px; }
+    .result-romaji { font-size: 0.88rem; color: #666; margin-top: 2px; font-style: italic; }
+    .result-meaning {
+      font-size: 1.1rem; color: #ddd;
+      margin-top: 14px; line-height: 1.5;
+    }
+    .result-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    .tag {
+      font-size: 0.72rem; padding: 2px 8px; border-radius: 10px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    }
+    .tag.verb { border-color: #7986cb; color: #7986cb; }
+    .tag.noun { border-color: #4db6ac; color: #4db6ac; }
+    .tag.adjective { border-color: #ffb74d; color: #ffb74d; }
+    .tag.adverb { border-color: #a5d6a7; color: #a5d6a7; }
+    .result-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+
+    /* SECTION BLOCKS */
+    .result-section { margin-top: 24px; }
+    .result-section-title {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); margin-bottom: 12px;
+    }
+
+    /* FORMS TABLE */
+    .forms-table {
+      width: 100%; border-collapse: collapse; font-size: 0.88rem;
+    }
+    .forms-table th {
+      background: var(--surface2); color: var(--text-muted); text-align: left;
+      padding: 6px 12px; border: 1px solid var(--border); font-weight: 600;
+    }
+    .forms-table td {
+      padding: 7px 12px; border: 1px solid var(--border);
+    }
+    .forms-table td:first-child { color: var(--text-muted); white-space: nowrap; }
+    .forms-table td:nth-child(2) { font-weight: 600; font-size: 1rem; }
+    .forms-table td:nth-child(3) { color: #888; font-style: italic; }
+
+    /* EXAMPLE SENTENCES */
+    .example-list { display: flex; flex-direction: column; gap: 14px; }
+    .example-item {
+      background: var(--surface2); border-radius: var(--radius);
+      padding: 12px 16px; border-left: 2px solid var(--accent);
+    }
+    .example-jp { font-size: 1rem; }
+    .example-reading { font-size: 0.82rem; color: var(--text-muted); margin-top: 3px; }
+    .example-en { font-size: 0.88rem; color: #aaa; margin-top: 5px; }
+
+    /* ERROR */
+    .error-msg {
+      margin-top: 24px;
+      background: rgba(232,75,75,0.1);
+      border: 1px solid rgba(232,75,75,0.3);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      color: var(--accent2);
+      font-size: 0.9rem;
+      max-width: 540px;
+    }
+
+    /* WORD BANK */
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .page-header h2 { font-size: 1.3rem; }
+    .search-bar { margin-bottom: 16px; }
+    .bank-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+    .filter-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .sort-group { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .sort-label { font-size: 0.75rem; color: var(--text-muted); }
+    .sort-btn {
+      padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+      background: none; color: var(--text-muted); cursor: pointer; font-size: 0.82rem;
+      transition: all 0.15s; font-family: inherit;
+    }
+    .sort-btn:hover { border-color: #555; color: var(--text); }
+    .sort-btn.active { background: var(--surface2); border-color: #555; color: var(--text); }
+    .filter-btn {
+      padding: 5px 13px; border-radius: 20px; border: 1px solid var(--border);
+      background: none; color: var(--text-muted); cursor: pointer; font-size: 0.82rem;
+      transition: all 0.15s; font-family: inherit;
+    }
+    .filter-btn:hover, .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .word-list { display: flex; flex-direction: column; gap: 10px; }
+    .word-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 18px;
+      display: flex; flex-direction: column; gap: 7px; transition: border-color 0.15s;
+    }
+    .word-card:hover { border-color: var(--border); }
+    .word-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .word-main { flex: 1; }
+    .word-jp { font-size: 1.3rem; font-weight: 700; }
+    .word-reading { font-size: 0.88rem; color: var(--text-muted); margin-top: 2px; }
+    .word-meaning { font-size: 0.9rem; color: #ccc; margin-top: 4px; }
+    .word-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+    .verb-table-toggle {
+      font-size: 0.8rem; color: var(--accent); background: none;
+      border: none; cursor: pointer; padding: 0; text-decoration: underline; font-family: inherit;
+    }
+    .bank-section-wrap { overflow-x: auto; margin-top: 10px; }
+    .verb-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin-top: 8px; }
+    .verb-table th {
+      background: var(--surface2); color: var(--text-muted); text-align: left;
+      padding: 5px 10px; border: 1px solid var(--border); font-weight: 600;
+    }
+    .verb-table td { padding: 5px 10px; border: 1px solid var(--border); }
+    .verb-table td:first-child { color: var(--text-muted); }
+    .bank-expand-section { margin-top: 14px; }
+    .bank-expand-title {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); margin-bottom: 8px;
+    }
+    .bank-notes-text { font-size: 0.83rem; color: #aaa; line-height: 1.6; }
+
+    /* FLASHCARDS */
+    .flashcard-controls {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 22px;
+    }
+    .flashcard-controls select { width: auto; }
+    .fc-pos-group {
+      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    }
+    .fc-pos-label {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border);
+      cursor: pointer; font-size: 0.82rem; color: var(--text-muted);
+      transition: all 0.15s; user-select: none;
+    }
+    .fc-pos-label:hover { border-color: #555; color: var(--text); }
+    .fc-pos-label input { display: none; }
+    .fc-pos-label.checked { background: var(--surface2); border-color: #555; color: var(--text); }
+    .fc-progress { font-size: 0.88rem; color: var(--text-muted); margin-left: auto; }
+    .flashcard-area { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+    .flashcard {
+      width: 100%; max-width: 520px; min-height: 240px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 36px 28px;
+      cursor: pointer; user-select: none; transition: border-color 0.2s; position: relative;
+    }
+    .flashcard:hover { border-color: var(--accent); }
+    .flashcard-inner { width: 100%; text-align: center; }
+    .flashcard .fc-hint { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 10px; }
+    .flashcard .fc-word { font-size: 2rem; font-weight: 700; }
+    .flashcard .fc-reading { font-size: 0.95rem; color: var(--text-muted); margin-top: 5px; }
+    .flashcard .fc-meaning { font-size: 1.1rem; color: #ccc; margin-top: 10px; }
+    .flashcard-btns { display: flex; gap: 14px; }
+    .fc-flip-hint {
+      position: absolute; bottom: 12px; right: 16px;
+      font-size: 0.72rem; color: var(--text-muted);
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 26px; max-width: 600px;
+      width: 92%; max-height: 88vh; overflow-y: auto;
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;
+    }
+    .modal-header h3 { font-size: 1.05rem; }
+    .modal-close {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 1.3rem; cursor: pointer; line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
+    .empty-state .icon { font-size: 2.6rem; margin-bottom: 14px; }
+
+    .hidden { display: none !important; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    /* TIPS */
+    #lookup-tips {
+      margin-top: 36px;
+      width: 100%;
+      max-width: 540px;
+    }
+    .tips-grid { display: flex; flex-direction: column; gap: 14px; }
+    .tips-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .tip-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #555;
+    }
+    .jlpt-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .jlpt-picker-label {
+      font-size: 0.72rem;
+      color: #555;
+      white-space: nowrap;
+    }
+    .jlpt-btns {
+      display: flex;
+      gap: 4px;
+    }
+    .jlpt-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+      letter-spacing: 0.3px;
+    }
+    .jlpt-btn:hover { border-color: #555; color: var(--text); }
+    .jlpt-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tip-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 36px;
+    }
+    .tip-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      padding: 5px 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .tip-chip:hover {
+      border-color: var(--accent);
+      color: var(--text);
+      background: var(--surface2);
+    }
+    .tip-chip-note {
+      font-size: 0.72rem;
+      color: #555;
+    }
+    .tip-chip:hover .tip-chip-note { color: var(--text-muted); }
+    .tips-level-desc {
+      font-size: 0.8rem;
+      color: #555;
+      line-height: 1.5;
+    }
+    .tips-level-desc strong { color: #777; font-weight: 600; }
+    .tips-hints {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-size: 0.76rem;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">日本語</span>
+  <button class="nav-btn active" data-page="lookup" onclick="showPage('lookup', this)">Look Up</button>
+  <button class="nav-btn" data-page="bank" onclick="showPage('bank', this)">
+    Word Bank <span id="bank-count" class="count-badge">0</span>
+  </button>
+  <button class="nav-btn" data-page="flashcards" onclick="showPage('flashcards', this)">Flashcards</button>
+  <div class="nav-right">
+    <button class="icon-btn" title="API Key Settings" onclick="openSettings()">⚙</button>
+  </div>
+</nav>
+
+<!-- ===== LOOKUP PAGE ===== -->
+<div class="page active" id="page-lookup">
+  <div class="lookup-hero" id="lookup-hero">
+    <p class="lookup-title">Enter any Japanese word or form</p>
+    <div class="lookup-box-wrap">
+      <!-- OWASP A03 – enforce max length at the HTML layer as first-pass validation -->
+      <input
+        type="text"
+        id="lookup-input"
+        placeholder="e.g. 飲んで、taberu、食べた…"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        maxlength="200"
+        onkeydown="if(event.key==='Enter') doLookup()"
+      />
+      <span class="lookup-enter-hint">↵ Enter</span>
+    </div>
+    <div class="api-key-warning" id="key-warning" style="display:none">
+      No API key set. <a onclick="openSettings()">Add your Claude API key</a> to enable AI lookup.
+    </div>
+
+    <!-- TIPS -->
+    <div id="lookup-tips">
+      <div class="tips-grid">
+        <div class="tips-top-row">
+          <div class="tip-label">Try looking up</div>
+          <div class="jlpt-picker">
+            <span class="jlpt-picker-label">My level:</span>
+            <div class="jlpt-btns" id="jlpt-btns"></div>
+          </div>
+        </div>
+        <div class="tip-chips" id="tip-chips"></div>
+        <div class="tips-hints" id="tips-hint-text"></div>
+      </div>
+    </div>
+
+    <div id="lookup-loader" class="loader hidden">
+      <div class="spinner"></div> Looking up…
+    </div>
+    <div id="lookup-error" class="error-msg hidden"></div>
+    <div id="result-area"></div>
+  </div>
+</div>
+
+<!-- ===== WORD BANK PAGE ===== -->
+<div class="page" id="page-bank">
+  <div class="page-header">
+    <h2>Word Bank</h2>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="bank-search" placeholder="Search words, meanings, tags…" maxlength="200" oninput="renderBank()" />
+  </div>
+  <div class="bank-controls">
+    <div class="filter-group">
+      <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
+      <button class="filter-btn" onclick="setFilter('verb', this)">Verbs</button>
+      <button class="filter-btn" onclick="setFilter('noun', this)">Nouns</button>
+      <button class="filter-btn" onclick="setFilter('adjective', this)">Adjectives</button>
+      <button class="filter-btn" onclick="setFilter('adverb', this)">Adverbs</button>
+      <button class="filter-btn" onclick="setFilter('other', this)">Other</button>
+    </div>
+    <div class="sort-group">
+      <span class="sort-label">Sort:</span>
+      <button class="sort-btn active" data-sort="recent" onclick="setSort('recent')">Recent</button>
+      <button class="sort-btn" data-sort="kana" onclick="setSort('kana')">Kana</button>
+    </div>
+  </div>
+  <div class="word-list" id="word-list"></div>
+</div>
+
+<!-- ===== FLASHCARDS PAGE ===== -->
+<div class="page" id="page-flashcards">
+  <h2 style="margin-bottom:20px">Flashcards</h2>
+  <div class="flashcard-controls">
+    <div class="fc-pos-group">
+      <label class="fc-pos-label checked"><input type="checkbox" class="fc-pos-check" value="verb" checked onchange="fcToggleLabel(this);initFlashcards()">Verbs</label>
+      <label class="fc-pos-label checked"><input type="checkbox" class="fc-pos-check" value="noun" checked onchange="fcToggleLabel(this);initFlashcards()">Nouns</label>
+      <label class="fc-pos-label checked"><input type="checkbox" class="fc-pos-check" value="adjective" checked onchange="fcToggleLabel(this);initFlashcards()">Adjectives</label>
+      <label class="fc-pos-label checked"><input type="checkbox" class="fc-pos-check" value="adverb" checked onchange="fcToggleLabel(this);initFlashcards()">Adverbs</label>
+      <label class="fc-pos-label checked"><input type="checkbox" class="fc-pos-check" value="other" checked onchange="fcToggleLabel(this);initFlashcards()">Other</label>
+    </div>
+    <select id="fc-mode" onchange="initFlashcards()" style="width:auto">
+      <option value="jp-to-en">Japanese → Meaning</option>
+      <option value="en-to-jp">Meaning → Japanese</option>
+    </select>
+    <button class="btn btn-secondary btn-sm" onclick="initFlashcards()">↻ Shuffle</button>
+    <span class="fc-progress" id="fc-progress"></span>
+  </div>
+  <div id="fc-area" class="flashcard-area">
+    <div class="empty-state"><div class="icon">📇</div><p>Add some words to start practicing!</p></div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Settings</h3>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Claude API Key</label>
+      <!-- maxlength guards against absurdly large pastes -->
+      <input type="password" id="api-key-input" placeholder="sk-ant-…" autocomplete="off" maxlength="300" />
+      <p style="margin-top:8px; font-size:0.8rem; color:var(--text-muted)">
+        Your key is stored only in your browser's localStorage and never sent anywhere except the Anthropic API.
+      </p>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:4px;">
+      <button class="btn btn-primary" onclick="saveApiKey()">Save</button>
+      <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="clearApiKey()">Clear Key</button>
+    </div>
+    <div id="settings-feedback" style="margin-top:10px; font-size:0.85rem;"></div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Word</h3>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Japanese (Dictionary Form)</label>
+        <input type="text" id="edit-word" maxlength="100" />
+      </div>
+      <div class="form-group">
+        <label>Reading (Hiragana)</label>
+        <input type="text" id="edit-reading" maxlength="100" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Romaji</label>
+      <input type="text" id="edit-romaji" maxlength="100" />
+    </div>
+    <div class="form-group">
+      <label>Meaning</label>
+      <textarea id="edit-meaning" maxlength="500"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Part of Speech</label>
+        <select id="edit-pos">
+          <option value="verb">Verb</option>
+          <option value="noun">Noun</option>
+          <option value="adjective">Adjective</option>
+          <option value="adverb">Adverb</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tags (comma separated)</label>
+        <input type="text" id="edit-tags" maxlength="200" />
+      </div>
+    </div>
+    <div id="edit-validation-msg" style="margin-top:8px;font-size:0.83rem;color:var(--accent);display:none;"></div>
+    <div style="margin-top:10px; display:flex; gap:10px;">
+      <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+      <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// SECURITY UTILITIES
+// ============================================================
+
+/**
+ * OWASP A03 – Injection / XSS Prevention
+ * Escape all dynamic content before inserting into innerHTML.
+ * Use this on every piece of data that originates from AI responses,
+ * localStorage, or any user input before putting it in a template literal.
+ */
+function escapeHTML(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/**
+ * OWASP A04 – Insecure Design / Rate Limiting
+ * Client-side rate limiter using localStorage timestamps.
+ * This is a per-browser/per-user control (not IP-based — there is no server).
+ * It prevents accidental API bill runup from rapid lookups and makes the
+ * cost-per-use visible to the user.
+ *
+ * Limits: max 30 lookups/hour, with a 2-second cooldown between requests.
+ */
+const RateLimiter = {
+  STORAGE_KEY: 'nihongai_rate_v1',
+  WINDOW_MS:   60 * 60 * 1000,  // 1 hour sliding window
+  MAX_CALLS:   30,               // max lookups per hour
+  COOLDOWN_MS: 2000,             // min ms between consecutive requests
+
+  _load() {
+    try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '{}'); }
+    catch { return {}; }
+  },
+  _save(state) {
+    try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full */ }
+  },
+
+  /** Returns { allowed: true } or { allowed: false, reason: string } */
+  check() {
+    const now = Date.now();
+    const state = this._load();
+    // Drop timestamps older than the sliding window
+    const ts = (state.timestamps || []).filter(t => now - t < this.WINDOW_MS);
+
+    // Cooldown: must wait between consecutive calls
+    if (ts.length && now - ts[ts.length - 1] < this.COOLDOWN_MS) {
+      return { allowed: false, reason: 'Please wait a moment before looking up another word.' };
+    }
+    // Hourly cap
+    if (ts.length >= this.MAX_CALLS) {
+      const resetMin = Math.ceil((ts[0] + this.WINDOW_MS - now) / 60000);
+      return { allowed: false, reason: `Rate limit reached (${this.MAX_CALLS} lookups/hour). Resets in ~${resetMin} min.` };
+    }
+    return { allowed: true };
+  },
+
+  /** Record a successful API call. Call this only after a successful request. */
+  record() {
+    const now = Date.now();
+    const state = this._load();
+    const ts = (state.timestamps || []).filter(t => now - t < this.WINDOW_MS);
+    ts.push(now);
+    this._save({ timestamps: ts });
+  },
+};
+
+/**
+ * OWASP A03 – Input Validation
+ * Single source of truth for length constraints. Also enforced via maxlength
+ * attributes in HTML as a first layer; these checks are the reliable layer.
+ */
+const LIMITS = {
+  LOOKUP:    200,   // characters in lookup query
+  WORD:      100,   // stored word field
+  READING:   100,   // hiragana / romaji
+  MEANING:   500,   // meaning text
+  NOTES:    2000,   // usage notes from AI
+  TAGS_STR:  200,   // raw tags input string
+  TAG_COUNT:  10,   // max number of individual tags
+  TAG_LEN:    30,   // max chars per tag
+};
+
+// Canonical set of allowed part-of-speech values (OWASP A03 – allowlist)
+const VALID_POS = new Set(['verb', 'noun', 'adjective', 'adverb', 'other']);
+
+/**
+ * OWASP A03 – Validate the lookup query before sending to the API.
+ * Returns an error string, or null if valid.
+ */
+function validateLookupInput(input) {
+  if (!input || !input.trim()) return 'Please enter a word to look up.';
+  if (input.length > LIMITS.LOOKUP)  return `Input too long (max ${LIMITS.LOOKUP} characters).`;
+  return null;
+}
+
+/**
+ * OWASP A07 – Identification and Authentication Failures
+ * Validate the API key format before storing.  Anthropic keys follow the
+ * pattern sk-ant-api03-…  Catching typos early saves confusing error messages.
+ * Returns an error string, or null if the format looks valid.
+ */
+function validateApiKey(key) {
+  if (!key || !key.trim())          return 'API key cannot be empty.';
+  if (!/^sk-ant-/.test(key))        return 'Key should start with "sk-ant-". Check you copied the full key.';
+  if (key.length < 40)              return 'Key looks too short — check you copied the full key.';
+  if (key.length > 300)             return 'Key looks too long — check you copied only the key.';
+  return null;
+}
+
+/**
+ * OWASP A03 – Validate/sanitize fields from the edit form before persisting.
+ * Returns an error string, or null if valid.
+ */
+function validateEditForm() {
+  const word    = document.getElementById('edit-word').value.trim();
+  const reading = document.getElementById('edit-reading').value.trim();
+  const romaji  = document.getElementById('edit-romaji').value.trim();
+  const meaning = document.getElementById('edit-meaning').value.trim();
+  const pos     = document.getElementById('edit-pos').value;
+  const tags    = document.getElementById('edit-tags').value;
+
+  if (!word)                              return 'Word field is required.';
+  if (word.length    > LIMITS.WORD)       return `Word too long (max ${LIMITS.WORD} chars).`;
+  if (reading.length > LIMITS.READING)    return `Reading too long (max ${LIMITS.READING} chars).`;
+  if (romaji.length  > LIMITS.READING)    return `Romaji too long (max ${LIMITS.READING} chars).`;
+  if (!meaning)                           return 'Meaning is required.';
+  if (meaning.length > LIMITS.MEANING)    return `Meaning too long (max ${LIMITS.MEANING} chars).`;
+  if (!VALID_POS.has(pos))               return 'Invalid part of speech selected.';
+
+  const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
+  if (tagList.length > LIMITS.TAG_COUNT)        return `Too many tags (max ${LIMITS.TAG_COUNT}).`;
+  if (tagList.some(t => t.length > LIMITS.TAG_LEN)) return `Each tag must be ≤ ${LIMITS.TAG_LEN} characters.`;
+
+  return null;
+}
+
+/**
+ * OWASP A08 – Software and Data Integrity Failures
+ * Validate and sanitize the JSON response from the Claude API before rendering.
+ * The AI is a third-party; treat its output as untrusted. This function:
+ *   1. Verifies required fields exist and have the right types.
+ *   2. Normalises unexpected pos values to "other".
+ *   3. Caps all string fields to sane lengths so oversized content can't bloat the DOM.
+ *   4. Strips unknown keys to prevent prototype-pollution or hidden fields being rendered.
+ * Throws if the response is structurally invalid (missing required fields).
+ */
+function validateAIResponse(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) {
+    throw new Error('Response is not a JSON object.');
+  }
+  if (typeof r.meaning !== 'string' || !r.meaning.trim()) {
+    throw new Error('Response is missing the required "meaning" field.');
+  }
+
+  // Normalise pos to the allowlist; never trust arbitrary values from AI output
+  if (!VALID_POS.has(r.pos)) r.pos = 'other';
+
+  // Cap / coerce all scalar string fields
+  const STR_FIELDS = ['input_form','dictionary_form','kanji','hiragana','romaji',
+                      'meaning','notes','verb_type','adj_type'];
+  for (const f of STR_FIELDS) {
+    if (r[f] != null) {
+      r[f] = String(r[f]).slice(0, f === 'notes' ? LIMITS.NOTES : LIMITS.MEANING);
+    }
+  }
+
+  // Sanitize tags: must be an array of strings, each within length limits
+  if (!Array.isArray(r.tags)) r.tags = [];
+  r.tags = r.tags
+    .filter(t => t != null && typeof t === 'string')
+    .slice(0, LIMITS.TAG_COUNT)
+    .map(t => t.slice(0, LIMITS.TAG_LEN));
+
+  // Sanitize forms array: only keep the fields we render; drop anything else
+  if (!Array.isArray(r.forms)) r.forms = [];
+  r.forms = r.forms.slice(0, 20).map(f => ({
+    label:    typeof f.label    === 'string' ? f.label.slice(0, 100)    : '',
+    japanese: typeof f.japanese === 'string' ? f.japanese.slice(0, 200) : '',
+    hiragana: typeof f.hiragana === 'string' ? f.hiragana.slice(0, 200) : '',
+    romaji:   typeof f.romaji   === 'string' ? f.romaji.slice(0, 200)   : '',
+  }));
+
+  // Sanitize example_sentences: same approach — allowlist of fields, cap lengths
+  if (!Array.isArray(r.example_sentences)) r.example_sentences = [];
+  r.example_sentences = r.example_sentences.slice(0, 10).map(s => ({
+    japanese: typeof s.japanese === 'string' ? s.japanese.slice(0, 300) : '',
+    hiragana: typeof s.hiragana === 'string' ? s.hiragana.slice(0, 300) : '',
+    english:  typeof s.english  === 'string' ? s.english.slice(0, 500)  : '',
+  }));
+
+  return r;
+}
+
+/**
+ * OWASP A08 – Software and Data Integrity Failures
+ * Sanitize word entries read from localStorage before using them.
+ * localStorage is writable by any script on the same origin; treat its content
+ * as untrusted. This function enforces the same schema/length rules as above,
+ * discarding any entry that doesn't look like a valid word object.
+ */
+function sanitizeStoredWords(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(w => w && typeof w === 'object' && typeof w.word === 'string' && w.word.trim())
+    .slice(0, 10000) // hard cap so localStorage bloat can't cause OOM
+    .map(w => ({
+      id:      typeof w.id === 'number' ? w.id : Date.now(),
+      word:    String(w.word    || '').slice(0, LIMITS.WORD),
+      reading: String(w.reading || '').slice(0, LIMITS.READING),
+      romaji:  String(w.romaji  || '').slice(0, LIMITS.READING),
+      meaning: String(w.meaning || '').slice(0, LIMITS.MEANING),
+      pos:     VALID_POS.has(w.pos) ? w.pos : 'other',
+      tags:    Array.isArray(w.tags)
+                 ? w.tags.filter(t => typeof t === 'string')
+                         .slice(0, LIMITS.TAG_COUNT)
+                         .map(t => t.slice(0, LIMITS.TAG_LEN))
+                 : [],
+      notes:   String(w.notes || '').slice(0, LIMITS.NOTES),
+      example_sentences: Array.isArray(w.example_sentences)
+        ? w.example_sentences.slice(0, 10).map(s => ({
+            japanese: String(s.japanese || '').slice(0, 300),
+            hiragana: String(s.hiragana || '').slice(0, 300),
+            english:  String(s.english  || '').slice(0, 500),
+          }))
+        : [],
+      tenses: (w.tenses && typeof w.tenses === 'object' && !Array.isArray(w.tenses))
+                ? w.tenses : {},
+      forms:  Array.isArray(w.forms)
+        ? w.forms.slice(0, 20).map(f => ({
+            label:    String(f.label    || '').slice(0, 100),
+            japanese: String(f.japanese || '').slice(0, 200),
+            hiragana: String(f.hiragana || '').slice(0, 200),
+            romaji:   String(f.romaji   || '').slice(0, 200),
+          }))
+        : [],
+      addedAt: typeof w.addedAt === 'string' ? w.addedAt : new Date().toISOString(),
+    }));
+}
+
+// ============================================================
+// DATA
+// ============================================================
+// OWASP A08 – validate data from localStorage before use; never trust raw storage
+let words = sanitizeStoredWords(JSON.parse(localStorage.getItem('jp_vocab') || '[]'));
+let currentFilter = 'all';
+let currentSort = 'recent';
+let editingId = null;
+let fcDeck = [], fcIndex = 0, fcFlipped = false;
+let pendingResult = null; // result from AI, waiting to be saved
+
+function save() {
+  localStorage.setItem('jp_vocab', JSON.stringify(words));
+  updateBadge();
+}
+function updateBadge() {
+  document.getElementById('bank-count').textContent = words.length;
+}
+updateBadge();
+
+// ============================================================
+// NAV
+// ============================================================
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'bank') renderBank();
+  if (name === 'flashcards') initFlashcards();
+}
+
+// ============================================================
+// SETTINGS / API KEY
+// ============================================================
+function getApiKey() { return localStorage.getItem('claude_api_key') || ''; }
+function openSettings() {
+  document.getElementById('api-key-input').value = getApiKey();
+  document.getElementById('settings-feedback').textContent = '';
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
+function saveApiKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  const fb  = document.getElementById('settings-feedback');
+
+  // OWASP A07 – validate key format before persisting; catches common paste errors
+  const err = validateApiKey(key);
+  if (err) {
+    fb.style.color = 'var(--accent)';
+    fb.textContent = err;
+    return;
+  }
+
+  localStorage.setItem('claude_api_key', key);
+  fb.style.color = 'var(--success)';
+  fb.textContent = 'API key saved.';
+  checkKeyWarning();
+  setTimeout(closeSettings, 900);
+}
+function clearApiKey() {
+  localStorage.removeItem('claude_api_key');
+  document.getElementById('api-key-input').value = '';
+  const fb = document.getElementById('settings-feedback');
+  fb.style.color = 'var(--accent)';
+  fb.textContent = 'Key cleared.';
+  checkKeyWarning();
+}
+function checkKeyWarning() {
+  document.getElementById('key-warning').style.display = getApiKey() ? 'none' : '';
+}
+checkKeyWarning();
+
+// ============================================================
+// AI LOOKUP
+// ============================================================
+async function doLookup() {
+  const rawInput = document.getElementById('lookup-input').value;
+  const input    = rawInput.trim();
+
+  // OWASP A03 – validate input before doing anything
+  const inputErr = validateLookupInput(input);
+  if (inputErr) { showLookupError(inputErr); return; }
+
+  const apiKey = getApiKey();
+  if (!apiKey) { openSettings(); return; }
+
+  // OWASP A04 – enforce rate limit before hitting the API
+  const rl = RateLimiter.check();
+  if (!rl.allowed) { showLookupError(rl.reason); return; }
+
+  const lookupBtn = document.querySelector('#page-lookup input');
+  const loader    = document.getElementById('lookup-loader');
+  const errorEl   = document.getElementById('lookup-error');
+  const resultArea = document.getElementById('result-area');
+  const hero       = document.getElementById('lookup-hero');
+
+  // Disable input while request is in-flight to prevent duplicate submissions
+  if (lookupBtn) lookupBtn.disabled = true;
+  loader.classList.remove('hidden');
+  errorEl.classList.add('hidden');
+  resultArea.innerHTML = '';
+  pendingResult = null;
+  document.getElementById('lookup-tips').classList.add('hidden');
+
+  const systemPrompt = `You are a Japanese language expert. When the user provides a Japanese word or phrase in ANY form (dictionary form, て-form, polite form, negative form, casual speech, romaji, etc.), analyze it and return a JSON object with the following structure. Respond with ONLY the JSON, no markdown, no extra text.
+
+{
+  "input_form": "the exact form the user entered",
+  "dictionary_form": "辞書形 (plain dictionary form)",
+  "kanji": "kanji representation (same as dictionary_form if it already is kanji, or kanji version if user entered kana)",
+  "hiragana": "full hiragana reading of the dictionary form",
+  "romaji": "romaji of the dictionary form",
+  "meaning": "concise English meaning, e.g. 'to drink; to swallow'",
+  "pos": "one of: verb, noun, adjective, adverb, other",
+  "verb_type": "for verbs only: 'ru-verb (Group 2)', 'u-verb (Group 1)', or 'irregular'. null for non-verbs.",
+  "adj_type": "for adjectives only: 'i-adjective' or 'na-adjective'. null otherwise.",
+  "tags": ["JLPT N5", "JLPT N4", etc — include JLPT level if known],
+  "forms": [
+    { "label": "辞書形 (Dictionary)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "ます形 (Polite Present)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "ない形 (Negative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "ません形 (Polite Negative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "た形 (Past)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "ました形 (Polite Past)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "なかった形 (Past Negative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "て形 (Te-form)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "可能形 (Potential)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "意向形 (Volitional)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "受身形 (Passive)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "使役形 (Causative)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "条件形ば (Conditional -ba)", "japanese": "…", "hiragana": "…", "romaji": "…" },
+    { "label": "条件形たら (Conditional -tara)", "japanese": "…", "hiragana": "…", "romaji": "…" }
+  ],
+  "example_sentences": [
+    { "japanese": "…", "hiragana": "…", "english": "…" },
+    { "japanese": "…", "hiragana": "…", "english": "…" },
+    { "japanese": "…", "hiragana": "…", "english": "…" }
+  ],
+  "notes": "any important usage notes, nuances, or common mistakes. Keep brief."
+}
+
+For non-verbs, "forms" should contain relevant inflections (e.g. for adjectives: plain/polite/negative/past forms; for nouns: with particles). Keep "forms" non-empty and useful for any part of speech.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1800,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: input }],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    const raw = data.content[0].text.trim();
+    // Strip possible ```json fences just in case the model wraps it
+    const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    let result;
+    try {
+      result = JSON.parse(jsonStr);
+    } catch {
+      throw new Error('AI returned non-JSON. Please try again.');
+    }
+
+    // OWASP A08 – validate and sanitize the AI response before rendering or storing.
+    // Treat every AI response as untrusted input; prompt injection could craft
+    // a response that contains XSS payloads in any string field.
+    result = validateAIResponse(result);
+
+    // Only record rate-limit usage after a successful, valid response
+    RateLimiter.record();
+
+    pendingResult = result;
+    renderResult(result);
+    hero.classList.add('has-result');
+  } catch (e) {
+    errorEl.textContent = 'Error: ' + (e.message || 'Unknown error. Check your API key and try again.');
+    errorEl.classList.remove('hidden');
+    document.getElementById('lookup-tips').classList.remove('hidden');
+  } finally {
+    loader.classList.add('hidden');
+    // Re-enable lookup input regardless of outcome
+    const lookupInput = document.getElementById('lookup-input');
+    if (lookupInput) lookupInput.disabled = false;
+  }
+}
+
+// Helper used by doLookup validation + rate-limiter rejections
+function showLookupError(msg) {
+  const errorEl = document.getElementById('lookup-error');
+  errorEl.textContent = msg;
+  errorEl.classList.remove('hidden');
+}
+
+function renderResult(r) {
+  // OWASP A03 – XSS Prevention: all dynamic fields from the AI response are
+  // passed through escapeHTML() before insertion into innerHTML.
+  // validateAIResponse() already capped lengths; escapeHTML() handles markup chars.
+  const area = document.getElementById('result-area');
+
+  const inputNote = r.input_form && r.input_form !== r.dictionary_form
+    ? `<div class="result-dict-form">Input form: <span>${escapeHTML(r.input_form)}</span> → Dictionary form: <span>${escapeHTML(r.dictionary_form)}</span></div>`
+    : '';
+
+  // Tag class is safe: the allowlist check ensures only known CSS class names are used.
+  // Tag text content still needs escaping in case JLPT strings contain special chars.
+  const tagHtml = [r.pos, ...(r.tags || [])].filter(Boolean).map(t =>
+    `<span class="tag ${['verb','noun','adjective','adverb'].includes(t) ? t : ''}">${escapeHTML(t)}</span>`
+  ).join('');
+
+  const extraTag = r.verb_type
+    ? `<span class="tag">${escapeHTML(r.verb_type)}</span>`
+    : r.adj_type ? `<span class="tag">${escapeHTML(r.adj_type)}</span>` : '';
+
+  // Forms table: each cell value escaped individually
+  const formsHtml = (r.forms && r.forms.length) ? `
+    <div class="result-section">
+      <div class="result-section-title">Forms &amp; Conjugations</div>
+      <div style="overflow-x:auto">
+        <table class="forms-table">
+          <thead><tr><th>Form</th><th>Japanese</th><th>Reading</th><th>Romaji</th></tr></thead>
+          <tbody>
+            ${r.forms.map(f => `
+              <tr>
+                <td>${escapeHTML(f.label)}</td>
+                <td>${f.japanese ? escapeHTML(f.japanese) : '—'}</td>
+                <td>${f.hiragana ? escapeHTML(f.hiragana) : '—'}</td>
+                <td>${f.romaji   ? escapeHTML(f.romaji)   : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  // Example sentences: each field escaped
+  const examplesHtml = (r.example_sentences && r.example_sentences.length) ? `
+    <div class="result-section">
+      <div class="result-section-title">Example Sentences</div>
+      <div class="example-list">
+        ${r.example_sentences.map(s => `
+          <div class="example-item">
+            <div class="example-jp">${escapeHTML(s.japanese)}</div>
+            ${s.hiragana ? `<div class="example-reading">${escapeHTML(s.hiragana)}</div>` : ''}
+            <div class="example-en">${escapeHTML(s.english)}</div>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  // Notes: plain text — must be escaped (can contain newlines from AI output)
+  const notesHtml = r.notes ? `
+    <div class="result-section">
+      <div class="result-section-title">Notes</div>
+      <p style="font-size:0.88rem; color:#aaa; line-height:1.6">${escapeHTML(r.notes)}</p>
+    </div>` : '';
+
+  area.innerHTML = `
+    <div class="result-card">
+      <div class="result-header">
+        <div class="result-word-block">
+          <div class="result-kanji">${escapeHTML(r.kanji || r.dictionary_form)}</div>
+          ${inputNote}
+          <div class="result-reading">${escapeHTML(r.hiragana || '')}</div>
+          <div class="result-romaji">${escapeHTML(r.romaji || '')}</div>
+          <div class="result-meaning">${escapeHTML(r.meaning)}</div>
+          <div class="result-tags" style="margin-top:10px">${tagHtml}${extraTag}</div>
+        </div>
+        <div class="result-actions">
+          <button class="btn btn-primary btn-sm" onclick="saveResult()">+ Save</button>
+          <button class="btn btn-secondary btn-sm" onclick="discardResult()">✕</button>
+        </div>
+      </div>
+      <hr class="divider">
+      ${formsHtml}
+      ${examplesHtml}
+      ${notesHtml}
+    </div>`;
+}
+
+function saveResult() {
+  if (!pendingResult) return;
+  const r = pendingResult;
+
+  // Build tenses object from forms array for word bank display
+  const tenseMap = {
+    '辞書形': 'present_plain',
+    'ます形': 'present_polite',
+    'ない形': 'negative_plain',
+    'ません形': 'negative_polite',
+    'た形': 'past_plain',
+    'ました形': 'past_polite',
+    'なかった形': 'past_negative',
+    'て形': 'te_form',
+    '可能形': 'potential',
+    '意向形': 'volitional',
+    '受身形': 'passive',
+    '使役形': 'causative',
+    '条件形ば': 'conditional_ba',
+    '条件形たら': 'conditional_tara',
+  };
+  const tenses = {};
+  (r.forms || []).forEach(f => {
+    // Match label prefix to known keys
+    for (const [prefix, key] of Object.entries(tenseMap)) {
+      if (f.label && f.label.startsWith(prefix)) {
+        tenses[key] = f.japanese || '';
+        break;
+      }
+    }
+  });
+
+  const entry = {
+    id: Date.now(),
+    word: r.kanji || r.dictionary_form,
+    reading: r.hiragana || '',
+    romaji: r.romaji || '',
+    meaning: r.meaning,
+    pos: r.pos || 'other',
+    tags: r.tags || [],
+    notes: r.notes || '',
+    example_sentences: r.example_sentences || [],
+    tenses,
+    forms: r.forms || [],
+    addedAt: new Date().toISOString(),
+  };
+  words.unshift(entry);
+  save();
+  pendingResult = null;
+
+  // Update buttons in place — keep the card visible
+  const actions = document.querySelector('.result-actions');
+  if (actions) {
+    actions.innerHTML = `
+      <span style="font-size:0.82rem;color:var(--success);padding:5px 4px">✓ Saved</span>
+      <button class="btn btn-secondary btn-sm" onclick="discardResult()">Dismiss</button>`;
+  }
+
+  showToast(`"${entry.word}" saved to Word Bank`);
+}
+
+function discardResult() {
+  document.getElementById('result-area').innerHTML = '';
+  document.getElementById('lookup-hero').classList.remove('has-result');
+  document.getElementById('lookup-input').value = '';
+  document.getElementById('lookup-tips').classList.remove('hidden');
+  pendingResult = null;
+}
+
+function tryWord(word) {
+  document.getElementById('lookup-input').value = word;
+  doLookup();
+}
+
+// ============================================================
+// JLPT LEVEL TIPS
+// ============================================================
+const JLPT_DATA = {
+  N5: {
+    desc: '<strong>N5 — Beginner.</strong> Basic everyday words, simple verbs, and common particles.',
+    hint: 'Try entering words in any form — romaji works too!',
+    words: [
+      { word: '食べる',   note: 'to eat' },
+      { word: '飲みます', note: 'polite form' },
+      { word: '大きい',   note: 'i-adj' },
+      { word: '静か',     note: 'na-adj' },
+      { word: 'ある',     note: 'to exist' },
+      { word: '行って',   note: 'て-form' },
+      { word: 'taberu',   note: 'romaji' },
+      { word: '見ない',   note: 'negative' },
+      { word: '水',       note: 'water' },
+      { word: '先生',     note: 'teacher' },
+      { word: '来る',     note: 'irregular verb' },
+      { word: '好き',     note: 'na-adj' },
+      { word: '何',       note: 'what' },
+      { word: '話す',     note: 'to speak' },
+      { word: '小さい',   note: 'i-adj' },
+      { word: '今日',     note: 'today' },
+      { word: '学校',     note: 'school' },
+      { word: '読む',     note: 'to read' },
+      { word: '高い',     note: 'tall/expensive' },
+      { word: '電車',     note: 'train' },
+    ],
+  },
+  N4: {
+    desc: '<strong>N4 — Elementary.</strong> More verbs, adjective conjugation, and basic grammar patterns.',
+    hint: 'You can enter conjugated forms — the AI will find the dictionary form.',
+    words: [
+      { word: '教える',       note: 'to teach' },
+      { word: '使いました',   note: 'polite past' },
+      { word: '嬉しい',       note: 'i-adj' },
+      { word: '丁寧',         note: 'na-adj' },
+      { word: '決める',       note: 'to decide' },
+      { word: '起きられない', note: 'potential neg.' },
+      { word: '思って',       note: 'て-form' },
+      { word: '勉強する',     note: 'suru verb' },
+      { word: '送る',         note: 'to send' },
+      { word: '覚える',       note: 'to memorize' },
+      { word: '忘れる',       note: 'to forget' },
+      { word: '始まる',       note: 'to begin' },
+      { word: '集める',       note: 'to collect' },
+      { word: '便利',         note: 'convenient' },
+      { word: '必要',         note: 'necessary' },
+      { word: '親切',         note: 'kindness' },
+      { word: '経験',         note: 'experience' },
+      { word: '運ぶ',         note: 'to carry' },
+      { word: '受ける',       note: 'to receive' },
+      { word: '終わる',       note: 'to end' },
+    ],
+  },
+  N3: {
+    desc: '<strong>N3 — Intermediate.</strong> Nuanced verbs, compound expressions, and everyday keigo.',
+    hint: 'Try looking up expressions you heard but aren\'t sure about.',
+    words: [
+      { word: '諦める',     note: 'to give up' },
+      { word: '驚かされた', note: 'causative-passive' },
+      { word: '悔しい',     note: 'frustrating' },
+      { word: '慣れる',     note: 'to get used to' },
+      { word: '怒らせて',   note: 'causative て' },
+      { word: '申し訳ない', note: 'sorry (keigo)' },
+      { word: '気にする',   note: 'to mind/care' },
+      { word: '感謝する',   note: 'to be grateful' },
+      { word: '努力する',   note: 'to make effort' },
+      { word: '理解する',   note: 'to understand' },
+      { word: '影響',       note: 'influence' },
+      { word: '確認',       note: 'confirmation' },
+      { word: '状況',       note: 'situation' },
+      { word: '目標',       note: 'goal' },
+      { word: '表現する',   note: 'to express' },
+      { word: '解決する',   note: 'to resolve' },
+      { word: '期待する',   note: 'to expect' },
+      { word: '判断する',   note: 'to judge' },
+      { word: '関係',       note: 'relationship' },
+      { word: '丁寧な',     note: 'na-adj inflected' },
+    ],
+  },
+  N2: {
+    desc: '<strong>N2 — Upper-intermediate.</strong> Abstract vocabulary, formal registers, and complex grammar.',
+    hint: 'Try formal or written Japanese words you\'ve encountered.',
+    words: [
+      { word: '把握する',   note: 'to grasp' },
+      { word: '妥協',       note: 'compromise' },
+      { word: '見直される', note: 'passive' },
+      { word: '曖昧',       note: 'vague' },
+      { word: '踏み込む',   note: 'to step into' },
+      { word: '促す',       note: 'to urge' },
+      { word: '配慮',       note: 'consideration' },
+      { word: 'おっしゃる', note: 'keigo: to say' },
+      { word: '承認',       note: 'approval' },
+      { word: '検討する',   note: 'to examine' },
+      { word: '懸念',       note: 'concern' },
+      { word: '対応する',   note: 'to respond' },
+      { word: '抑制する',   note: 'to suppress' },
+      { word: '専門',       note: 'specialty' },
+      { word: '認識する',   note: 'to recognize' },
+      { word: '批判する',   note: 'to criticize' },
+      { word: '介入',       note: 'intervention' },
+      { word: '施策',       note: 'policy measure' },
+      { word: '詳細',       note: 'details' },
+      { word: '根拠',       note: 'basis/grounds' },
+    ],
+  },
+  N1: {
+    desc: '<strong>N1 — Advanced.</strong> Literary, academic, and highly formal vocabulary.',
+    hint: 'Rare kanji, classical forms, and domain-specific terms are all fair game.',
+    words: [
+      { word: '逡巡する',   note: 'to hesitate' },
+      { word: '憚られる',   note: 'passive, reserved' },
+      { word: '齟齬',       note: 'discrepancy' },
+      { word: '忖度',       note: 'reading the room' },
+      { word: '翻弄される', note: 'to be toyed with' },
+      { word: '蔑む',       note: 'to despise' },
+      { word: '慇懃無礼',   note: '4-char compound' },
+      { word: '辟易する',   note: 'to be fed up' },
+      { word: '葛藤',       note: 'inner conflict' },
+      { word: '瑕疵',       note: 'defect/flaw' },
+      { word: '払拭する',   note: 'to dispel' },
+      { word: '錯綜する',   note: 'to be entangled' },
+      { word: '醸成する',   note: 'to cultivate' },
+      { word: '凌駕する',   note: 'to surpass' },
+      { word: '佇む',       note: 'to stand still' },
+      { word: '慄く',       note: 'to shudder' },
+      { word: '杞憂',       note: 'needless worry' },
+      { word: '懐柔する',   note: 'to placate' },
+      { word: '蹂躙する',   note: 'to trample' },
+      { word: '起伏',       note: 'ups and downs' },
+    ],
+  },
+};
+
+let currentJLPT = localStorage.getItem('jlpt_level') || 'N5';
+
+function initTips() {
+  // Build JLPT buttons
+  const btnsEl = document.getElementById('jlpt-btns');
+  btnsEl.innerHTML = ['N5','N4','N3','N2','N1'].map(lvl =>
+    `<button class="jlpt-btn ${lvl === currentJLPT ? 'active' : ''}" onclick="setJLPT('${lvl}')">${lvl}</button>`
+  ).join('');
+  renderTips();
+}
+
+function setJLPT(lvl) {
+  currentJLPT = lvl;
+  localStorage.setItem('jlpt_level', lvl);
+  document.querySelectorAll('.jlpt-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent === lvl);
+  });
+  renderTips();
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function renderTips() {
+  // OWASP A03 – onclick with string interpolation is vulnerable to JS injection if the
+  // word value ever contains quotes or semicolons. Fix: use data attributes + a delegated
+  // click handler, or use JSON.stringify() so the value is a proper JS string literal.
+  // We use JSON.stringify() here — it produces a quoted, escaped string safe for onclick.
+  // Word text content is also escaped for defense in depth (data is currently static but
+  // this protects against any future dynamic data path).
+  const data = JLPT_DATA[currentJLPT];
+  const picked = shuffle(data.words).slice(0, 5);
+  document.getElementById('tip-chips').innerHTML = picked.map(w =>
+    `<button class="tip-chip" onclick="tryWord(${JSON.stringify(w.word)})">${escapeHTML(w.word)}<span class="tip-chip-note">${escapeHTML(w.note)}</span></button>`
+  ).join('');
+  // data.desc / data.hint are hardcoded static strings — no escaping needed here
+  document.getElementById('tips-hint-text').innerHTML =
+    `<div class="tips-level-desc">${data.desc}<br><span>${data.hint}</span></div>`;
+}
+
+initTips();
+
+// Simple toast
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = `position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+      background:var(--surface);border:1px solid var(--border);color:var(--text);
+      padding:10px 20px;border-radius:8px;font-size:0.88rem;z-index:999;
+      box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:opacity 0.3s;`;
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2400);
+}
+
+// ============================================================
+// WORD BANK
+// ============================================================
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBank();
+}
+function setSort(s) {
+  currentSort = s;
+  document.querySelectorAll('.sort-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.sort === s);
+  });
+  renderBank();
+}
+function renderBank() {
+  const query = (document.getElementById('bank-search').value || '').toLowerCase();
+  const list = document.getElementById('word-list');
+  let filtered = words.filter(w => {
+    if (currentFilter !== 'all' && w.pos !== currentFilter) return false;
+    if (!query) return true;
+    return (
+      (w.word || '').toLowerCase().includes(query) ||
+      (w.reading || '').toLowerCase().includes(query) ||
+      (w.romaji || '').toLowerCase().includes(query) ||
+      (w.meaning || '').toLowerCase().includes(query) ||
+      (w.tags || []).join(' ').toLowerCase().includes(query)
+    );
+  });
+  if (currentSort === 'kana') {
+    filtered.sort((a, b) => (a.reading || a.word || '').localeCompare(b.reading || b.word || '', 'ja'));
+  } else {
+    filtered.sort((a, b) => b.id - a.id);
+  }
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>${
+      words.length ? 'No words match your search.' : 'No words yet — look one up!'
+    }</p></div>`;
+    return;
+  }
+  list.innerHTML = filtered.map((w, i) => wordCardHTML(w, i)).join('');
+}
+
+function wordCardHTML(w, idx) {
+  // OWASP A03 – XSS Prevention: all word fields come from localStorage (previously
+  // from AI responses). Escape every value before injecting into innerHTML.
+  // Note: tag CSS class is safe — only assigned when it matches a known string.
+  const tagHtml = [w.pos, ...(w.tags || [])].filter(Boolean).map(t =>
+    `<span class="tag ${['verb','noun','adjective','adverb'].includes(t)?t:''}">${escapeHTML(t)}</span>`
+  ).join('');
+
+  const { note, examples } = parseWordDetails(w);
+  const hasForms    = (w.forms && w.forms.length > 0) || Object.keys(w.tenses || {}).some(k => w.tenses[k]);
+  const hasExamples = examples.length > 0;
+  const hasNotes    = !!note;
+  const hasDetails  = hasForms || hasExamples || hasNotes;
+  // Unique detail-panel ID; fall back to array index for legacy words without an id
+  const detId = `det-${w.id != null ? w.id : 'i' + idx}`;
+
+  const detailsContent = [
+    hasForms    ? `<div class="bank-expand-section"><div class="bank-expand-title">Forms &amp; Conjugations</div>${buildFormsHTML(w)}</div>` : '',
+    hasExamples ? `<div class="bank-expand-section"><div class="bank-expand-title">Example Sentences</div>${buildExamplesHTML(examples)}</div>` : '',
+    hasNotes    ? `<div class="bank-expand-section"><div class="bank-expand-title">Notes</div>${buildNotesHTML(note)}</div>` : '',
+  ].join('');
+
+  // w.id is a safe numeric timestamp — used in onclick numeric args and CSS ids, no escaping needed
+  return `
+  <div class="word-card" id="wc-${w.id}">
+    <div class="word-card-header">
+      <div class="word-main">
+        <div class="word-jp">${escapeHTML(w.word)}</div>
+        ${w.reading ? `<div class="word-reading">${escapeHTML(w.reading)}${w.romaji ? ' · ' + escapeHTML(w.romaji) : ''}</div>` : ''}
+        <div class="word-meaning">${escapeHTML(w.meaning)}</div>
+      </div>
+      <div class="word-actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEdit(${w.id})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteWord(${w.id})">✕</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${tagHtml}</div>
+    ${hasDetails ? `<button class="verb-table-toggle" onclick="toggleDetails('${detId}',this)">Show details</button>` : ''}
+    ${hasDetails ? `<div class="bank-section-wrap hidden" id="${detId}">${detailsContent}</div>` : ''}
+  </div>`;
+}
+
+// For words saved in old format, notes contains "usage note\n\njp — en\njp — en"
+// This splits them back into separate note text and examples array.
+function parseWordDetails(w) {
+  if (w.example_sentences && w.example_sentences.length > 0) {
+    return { note: w.notes || '', examples: w.example_sentences };
+  }
+  if (w.notes && w.notes.includes('\n\n')) {
+    const sepIdx = w.notes.indexOf('\n\n');
+    const noteText = w.notes.slice(0, sepIdx).trim();
+    const exLines = w.notes.slice(sepIdx + 2).trim().split('\n').filter(Boolean);
+    const examples = exLines.map(line => {
+      const d = line.indexOf(' — ');
+      return d !== -1 ? { japanese: line.slice(0, d), english: line.slice(d + 3) } : { japanese: line, english: '' };
+    });
+    return { note: noteText, examples };
+  }
+  return { note: w.notes || '', examples: [] };
+}
+
+function buildFormsHTML(w) {
+  if (w.forms && w.forms.length) {
+    const tbody = document.createElement('tbody');
+    w.forms.forEach(f => {
+      const tr = document.createElement('tr');
+      const tdLabel = document.createElement('td'); tdLabel.textContent = f.label || '';
+      const tdJp = document.createElement('td'); tdJp.textContent = f.japanese || '—';
+      const tdRead = document.createElement('td'); tdRead.textContent = f.hiragana || '—';
+      tr.appendChild(tdLabel); tr.appendChild(tdJp); tr.appendChild(tdRead);
+      tbody.appendChild(tr);
+    });
+    return `<table class="verb-table"><thead><tr><th>Form</th><th>Japanese</th><th>Reading</th></tr></thead>${tbody.outerHTML}</table>`;
+  }
+  const TENSE_LABELS = {
+    present_plain:'辞書形', present_polite:'ます形', negative_plain:'ない形',
+    negative_polite:'ません形', past_plain:'た形', past_polite:'ました形',
+    past_negative:'なかった形', te_form:'て形', potential:'可能形',
+    volitional:'意向形', passive:'受身形', causative:'使役形',
+    conditional_ba:'条件形ば', conditional_tara:'条件形たら',
+  };
+  // OWASP A03 – XSS: legacy tenses values came from earlier AI responses stored in
+  // localStorage. Both the key (used as a label fallback) and value must be escaped.
+  const rows = Object.entries(w.tenses || {}).filter(([,v]) => v).map(([k,v]) =>
+    `<tr><td>${escapeHTML(TENSE_LABELS[k] || k)}</td><td>${escapeHTML(v)}</td><td></td></tr>`
+  ).join('');
+  return `<table class="verb-table"><thead><tr><th>Form</th><th>Japanese</th><th>Reading</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function buildExamplesHTML(examples) {
+  const list = document.createElement('div');
+  list.className = 'example-list';
+  examples.forEach(s => {
+    const item = document.createElement('div'); item.className = 'example-item';
+    const jp = document.createElement('div'); jp.className = 'example-jp'; jp.textContent = s.japanese || '';
+    item.appendChild(jp);
+    if (s.hiragana) {
+      const rd = document.createElement('div'); rd.className = 'example-reading'; rd.textContent = s.hiragana;
+      item.appendChild(rd);
+    }
+    const en = document.createElement('div'); en.className = 'example-en'; en.textContent = s.english || '';
+    item.appendChild(en);
+    list.appendChild(item);
+  });
+  return list.outerHTML;
+}
+
+function buildNotesHTML(note) {
+  const p = document.createElement('p');
+  p.textContent = note;
+  return `<p class="bank-notes-text">${p.innerHTML}</p>`;
+}
+
+function toggleDetails(id, btn) {
+  const el = document.getElementById(id);
+  const isHidden = el.classList.contains('hidden');
+  el.classList.toggle('hidden', !isHidden);
+  btn.textContent = isHidden ? 'Hide details' : 'Show details';
+}
+function deleteWord(id) {
+  if (!confirm('Delete this word?')) return;
+  words = words.filter(w => w.id !== id);
+  save(); renderBank();
+}
+
+// ============================================================
+// EDIT MODAL
+// ============================================================
+function openEdit(id) {
+  editingId = id;
+  const w = words.find(x => x.id === id);
+  if (!w) return;
+  document.getElementById('edit-word').value = w.word;
+  document.getElementById('edit-reading').value = w.reading || '';
+  document.getElementById('edit-romaji').value = w.romaji || '';
+  document.getElementById('edit-meaning').value = w.meaning;
+  document.getElementById('edit-pos').value = w.pos || 'other';
+  document.getElementById('edit-tags').value = (w.tags || []).join(', ');
+  document.getElementById('edit-modal').classList.add('open');
+}
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  document.getElementById('edit-validation-msg').style.display = 'none';
+  editingId = null;
+}
+function saveEdit() {
+  // OWASP A03 – validate all fields before persisting; reject invalid pos values
+  // outright since the select is the only UI for it (guards against programmatic abuse)
+  const validationMsg = document.getElementById('edit-validation-msg');
+  const err = validateEditForm();
+  if (err) {
+    validationMsg.textContent = err;
+    validationMsg.style.display = '';
+    return;
+  }
+  validationMsg.style.display = 'none';
+
+  const w = words.find(x => x.id === editingId);
+  if (!w) return;
+
+  const rawPos = document.getElementById('edit-pos').value;
+  const rawTags = document.getElementById('edit-tags').value
+    .split(',').map(t => t.trim()).filter(Boolean)
+    .slice(0, LIMITS.TAG_COUNT)
+    .map(t => t.slice(0, LIMITS.TAG_LEN));
+
+  w.word    = document.getElementById('edit-word').value.trim().slice(0, LIMITS.WORD);
+  w.reading = document.getElementById('edit-reading').value.trim().slice(0, LIMITS.READING);
+  w.romaji  = document.getElementById('edit-romaji').value.trim().slice(0, LIMITS.READING);
+  w.meaning = document.getElementById('edit-meaning').value.trim().slice(0, LIMITS.MEANING);
+  w.pos     = VALID_POS.has(rawPos) ? rawPos : 'other'; // allowlist enforcement
+  w.tags    = rawTags;
+  save(); closeEditModal(); renderBank();
+}
+
+// ============================================================
+// FLASHCARDS
+// ============================================================
+function fcToggleLabel(cb) {
+  cb.closest('.fc-pos-label').classList.toggle('checked', cb.checked);
+}
+function initFlashcards() {
+  const checked = [...document.querySelectorAll('.fc-pos-check:checked')].map(cb => cb.value);
+  let pool = checked.length === 0 ? [...words] : words.filter(w => checked.includes(w.pos || 'other'));
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  fcDeck = pool; fcIndex = 0; fcFlipped = false;
+  renderFlashcard();
+}
+function renderFlashcard() {
+  // OWASP A03 – XSS Prevention: word data originates from localStorage (AI responses).
+  // All dynamic fields are escaped before innerHTML injection.
+  const area = document.getElementById('fc-area');
+  const prog = document.getElementById('fc-progress');
+  if (!fcDeck.length) {
+    area.innerHTML = `<div class="empty-state"><div class="icon">📇</div><p>No words to practice.</p></div>`;
+    prog.textContent = ''; return;
+  }
+  prog.textContent = `${fcIndex + 1} / ${fcDeck.length}`;
+  const w = fcDeck[fcIndex];
+  const mode = document.getElementById('fc-mode').value;
+  const front = mode === 'jp-to-en'
+    ? `<div class="fc-hint">What does this mean?</div><div class="fc-word">${escapeHTML(w.word)}</div>${w.reading ? `<div class="fc-reading">${escapeHTML(w.reading)}</div>` : ''}`
+    : `<div class="fc-hint">How do you say this in Japanese?</div><div class="fc-meaning">${escapeHTML(w.meaning)}</div>`;
+  const back = mode === 'jp-to-en'
+    ? `<div class="fc-meaning">${escapeHTML(w.meaning)}</div>${w.romaji ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:6px">${escapeHTML(w.romaji)}</div>` : ''}`
+    : `<div class="fc-word">${escapeHTML(w.word)}</div>${w.reading ? `<div class="fc-reading">${escapeHTML(w.reading)}</div>` : ''}`;
+  const tags = [w.pos,...(w.tags||[])].map(t =>
+    `<span class="tag ${['verb','noun','adjective','adverb'].includes(t)?t:''}">${escapeHTML(t)}</span>`
+  ).join('');
+  area.innerHTML = `
+    <div class="flashcard" onclick="flipCard()">
+      <div class="flashcard-inner">${fcFlipped ? back : front}</div>
+      <div class="fc-flip-hint">${fcFlipped ? 'click to flip back' : 'click to reveal'}</div>
+    </div>
+    <div style="display:flex;gap:6px;justify-content:center">${tags}</div>
+    <div class="flashcard-btns">
+      <button class="btn btn-secondary" onclick="fcNav(-1)" ${fcIndex===0?'disabled':''}>← Prev</button>
+      <button class="btn btn-primary" onclick="fcNav(1)">${fcIndex===fcDeck.length-1?'Done':'Next →'}</button>
+    </div>`;
+}
+function flipCard() { fcFlipped = !fcFlipped; renderFlashcard(); }
+function fcNav(dir) {
+  if (dir === 1 && fcIndex === fcDeck.length - 1) {
+    document.getElementById('fc-area').innerHTML = `
+      <div class="empty-state"><div class="icon">🎉</div><p>All ${fcDeck.length} cards reviewed!</p></div>
+      <button class="btn btn-primary" onclick="initFlashcards()">Practice Again</button>`;
+    document.getElementById('fc-progress').textContent = '';
+    return;
+  }
+  fcIndex = Math.max(0, Math.min(fcDeck.length - 1, fcIndex + dir));
+  fcFlipped = false; renderFlashcard();
+}
+</script>
+</body>
+</html>
