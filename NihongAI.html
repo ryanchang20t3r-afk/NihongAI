@@ -1035,9 +1035,12 @@ async function doLookup() {
 
   try {
     // Get the current user's auth token to authenticate with the Edge Function
+    console.log('DEBUG: calling getSession...');
     const { data: { session } } = await sb.auth.getSession();
+    console.log('DEBUG: session =', session ? 'exists' : 'null');
     if (!session) { showLookupError('Please sign in to use lookup.'); return; }
 
+    console.log('DEBUG: firing fetch to edge function...');
     // Call the Supabase Edge Function — the API key never touches the browser
     const res = await fetch(`${SUPABASE_URL}/functions/v1/lookup`, {
       method: 'POST',
