@@ -10,7 +10,7 @@
     ensures the API key can only be sent to api.anthropic.com and nowhere else.
   -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.anthropic.com; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+        content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src https://api.anthropic.com https://*.supabase.co; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
   <title>Japanese Vocabulary Tracker</title>
   <style>
     :root {
@@ -377,6 +377,23 @@
     .empty-state .icon { font-size: 2.6rem; margin-bottom: 14px; }
 
     .hidden { display: none !important; }
+
+    /* AUTH GATE */
+    #auth-gate {
+      display: flex; position: fixed; inset: 0;
+      background: var(--bg); z-index: 500;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+    }
+    .auth-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 28px; width: 92%; max-width: 380px;
+    }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .auth-tabs .btn { flex: 1; justify-content: center; }
+    #auth-error { font-size: 0.85rem; min-height: 18px; margin-bottom: 10px; }
+    .nav-user { display: flex; align-items: center; gap: 8px; }
+    .nav-user-email { font-size: 0.82rem; color: var(--text-muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
     /* TIPS */
@@ -472,6 +489,7 @@
       color: #444;
     }
   </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 
@@ -483,9 +501,39 @@
   </button>
   <button class="nav-btn" data-page="flashcards" onclick="showPage('flashcards', this)">Flashcards</button>
   <div class="nav-right">
+    <div id="auth-user" class="nav-user" style="display:none">
+      <span id="auth-email-display" class="nav-user-email"></span>
+      <button class="btn btn-secondary btn-sm" onclick="signOut()">Sign out</button>
+    </div>
     <button class="icon-btn" title="API Key Settings" onclick="openSettings()">⚙</button>
   </div>
 </nav>
+
+<!-- AUTH GATE — shown until user signs in -->
+<div id="auth-gate">
+  <div style="text-align:center">
+    <div style="font-size:2.2rem;font-weight:700;color:var(--accent);margin-bottom:6px">日本語</div>
+    <div style="color:var(--text-muted);font-size:0.9rem">Sign in to access your word bank</div>
+  </div>
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button id="auth-tab-login" class="btn btn-primary btn-sm" onclick="switchAuthTab('login')">Sign In</button>
+      <button id="auth-tab-signup" class="btn btn-secondary btn-sm" onclick="switchAuthTab('signup')">Sign Up</button>
+    </div>
+    <div class="form-group">
+      <label for="auth-email-input">Email</label>
+      <input type="email" id="auth-email-input" placeholder="you@example.com" maxlength="200"
+             onkeydown="if(event.key==='Enter')authSubmit()">
+    </div>
+    <div class="form-group">
+      <label for="auth-pass-input">Password</label>
+      <input type="password" id="auth-pass-input" placeholder="••••••••" maxlength="128"
+             onkeydown="if(event.key==='Enter')authSubmit()">
+    </div>
+    <div id="auth-error" style="color:var(--accent)"></div>
+    <button id="auth-submit-btn" class="btn btn-primary" style="width:100%;justify-content:center" onclick="authSubmit()">Sign In</button>
+  </div>
+</div>
 
 <!-- ===== LOOKUP PAGE ===== -->
 <div class="page active" id="page-lookup">
@@ -665,6 +713,38 @@
  * Use this on every piece of data that originates from AI responses,
  * localStorage, or any user input before putting it in a template literal.
  */
+// ============================================================
+// SUPABASE CONFIG
+// Step 1 – create a free project at https://supabase.com
+// Step 2 – open the Supabase SQL Editor and run:
+//
+//   create table public.words (
+//     id        bigserial primary key,
+//     user_id   uuid references auth.users(id) on delete cascade not null,
+//     word      text not null default '',
+//     reading   text not null default '',
+//     romaji    text not null default '',
+//     meaning   text not null default '',
+//     pos       text not null default 'other',
+//     notes     text not null default '',
+//     tags      jsonb not null default '[]',
+//     forms     jsonb not null default '[]',
+//     tenses    jsonb not null default '{}',
+//     examples  jsonb not null default '[]',
+//     added_at  timestamptz not null default now()
+//   );
+//   alter table public.words enable row level security;
+//   create policy "Users manage own words" on public.words
+//     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+//
+// Step 3 – replace the two placeholder strings below with your
+//          Project URL and anon key (Dashboard → Project Settings → API)
+// ============================================================
+const SUPABASE_URL  = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+let currentUser = null;
+
 function escapeHTML(s) {
   if (s == null) return '';
   return String(s)
@@ -904,15 +984,58 @@ function sanitizeStoredWords(raw) {
 // DATA
 // ============================================================
 // OWASP A08 – validate data from localStorage before use; never trust raw storage
-let words = sanitizeStoredWords(JSON.parse(localStorage.getItem('jp_vocab') || '[]'));
+let words = []; // loaded from Supabase after sign-in (not localStorage)
 let currentFilter = 'all';
 let currentSort = 'recent';
 let editingId = null;
 let fcDeck = [], fcIndex = 0, fcFlipped = false;
 let pendingResult = null; // result from AI, waiting to be saved
 
-function save() {
-  localStorage.setItem('jp_vocab', JSON.stringify(words));
+// save() retained as a no-op shim; persistence is now handled by individual DB operations
+function save() { updateBadge(); }
+
+// Map local word object → Supabase row
+function toDbRow(w) {
+  return {
+    user_id:  currentUser.id,
+    word:     w.word     || '',
+    reading:  w.reading  || '',
+    romaji:   w.romaji   || '',
+    meaning:  w.meaning  || '',
+    pos:      w.pos      || 'other',
+    notes:    w.notes    || '',
+    tags:     w.tags     || [],
+    forms:    w.forms    || [],
+    tenses:   w.tenses   || {},
+    examples: w.example_sentences || [],
+    added_at: w.addedAt  || new Date().toISOString(),
+  };
+}
+
+// Map Supabase row → local word object
+function fromDbRow(r) {
+  return {
+    id:               r.id,
+    word:             r.word,
+    reading:          r.reading,
+    romaji:           r.romaji,
+    meaning:          r.meaning,
+    pos:              r.pos,
+    notes:            r.notes,
+    tags:             r.tags || [],
+    forms:            r.forms || [],
+    tenses:           r.tenses || {},
+    example_sentences: r.examples || [],
+    addedAt:          r.added_at,
+  };
+}
+
+async function loadWords() {
+  const { data, error } = await sb.from('words')
+    .select('*')
+    .order('added_at', { ascending: false });
+  if (error) { console.error('loadWords:', error); return; }
+  words = (data || []).map(fromDbRow);
   updateBadge();
 }
 function updateBadge() {
@@ -1191,7 +1314,7 @@ function renderResult(r) {
     </div>`;
 }
 
-function saveResult() {
+async function saveResult() {
   if (!pendingResult) return;
   const r = pendingResult;
 
@@ -1237,8 +1360,16 @@ function saveResult() {
     forms: r.forms || [],
     addedAt: new Date().toISOString(),
   };
+  // Persist to Supabase; get back the DB-assigned id
+  const { data: inserted, error: insErr } = await sb.from('words')
+    .insert([toDbRow(entry)]).select().single();
+  if (insErr) {
+    showToast('Save failed: ' + insErr.message);
+    return;
+  }
+  entry.id = inserted.id;
   words.unshift(entry);
-  save();
+  updateBadge();
   pendingResult = null;
 
   // Update buttons in place — keep the card visible
@@ -1630,10 +1761,13 @@ function toggleDetails(id, btn) {
   el.classList.toggle('hidden', !isHidden);
   btn.textContent = isHidden ? 'Hide details' : 'Show details';
 }
-function deleteWord(id) {
+async function deleteWord(id) {
   if (!confirm('Delete this word?')) return;
+  const { error } = await sb.from('words').delete()
+    .eq('id', id).eq('user_id', currentUser.id);
+  if (error) { showToast('Delete failed: ' + error.message); return; }
   words = words.filter(w => w.id !== id);
-  save(); renderBank();
+  updateBadge(); renderBank();
 }
 
 // ============================================================
@@ -1656,7 +1790,7 @@ function closeEditModal() {
   document.getElementById('edit-validation-msg').style.display = 'none';
   editingId = null;
 }
-function saveEdit() {
+async function saveEdit() {
   // OWASP A03 – validate all fields before persisting; reject invalid pos values
   // outright since the select is the only UI for it (guards against programmatic abuse)
   const validationMsg = document.getElementById('edit-validation-msg');
@@ -1683,7 +1817,21 @@ function saveEdit() {
   w.meaning = document.getElementById('edit-meaning').value.trim().slice(0, LIMITS.MEANING);
   w.pos     = VALID_POS.has(rawPos) ? rawPos : 'other'; // allowlist enforcement
   w.tags    = rawTags;
-  save(); closeEditModal(); renderBank();
+
+  const { error: updErr } = await sb.from('words').update({
+    word:    w.word,
+    reading: w.reading,
+    romaji:  w.romaji,
+    meaning: w.meaning,
+    pos:     w.pos,
+    tags:    w.tags,
+  }).eq('id', w.id).eq('user_id', currentUser.id);
+  if (updErr) {
+    validationMsg.textContent = 'Save failed: ' + updErr.message;
+    validationMsg.style.display = '';
+    return;
+  }
+  updateBadge(); closeEditModal(); renderBank();
 }
 
 // ============================================================
@@ -1746,6 +1894,112 @@ function fcNav(dir) {
   fcIndex = Math.max(0, Math.min(fcDeck.length - 1, fcIndex + dir));
   fcFlipped = false; renderFlashcard();
 }
+
+// ============================================================
+// AUTH
+// ============================================================
+let authMode = 'login';
+
+function switchAuthTab(mode) {
+  authMode = mode;
+  document.getElementById('auth-tab-login').className =
+    'btn btn-sm ' + (mode === 'login' ? 'btn-primary' : 'btn-secondary');
+  document.getElementById('auth-tab-signup').className =
+    'btn btn-sm ' + (mode === 'signup' ? 'btn-primary' : 'btn-secondary');
+  document.getElementById('auth-submit-btn').textContent =
+    mode === 'login' ? 'Sign In' : 'Create Account';
+  document.getElementById('auth-error').textContent = '';
+  document.getElementById('auth-error').style.color = 'var(--accent)';
+}
+
+function authSubmit() {
+  if (authMode === 'login') signIn();
+  else signUp();
+}
+
+async function signIn() {
+  const email = document.getElementById('auth-email-input').value.trim();
+  const pass  = document.getElementById('auth-pass-input').value;
+  const errEl = document.getElementById('auth-error');
+  errEl.style.color = 'var(--accent)';
+  errEl.textContent = '';
+  if (!email || !pass) { errEl.textContent = 'Email and password are required.'; return; }
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) errEl.textContent = error.message;
+}
+
+async function signUp() {
+  const email = document.getElementById('auth-email-input').value.trim();
+  const pass  = document.getElementById('auth-pass-input').value;
+  const errEl = document.getElementById('auth-error');
+  errEl.style.color = 'var(--accent)';
+  errEl.textContent = '';
+  if (!email) { errEl.textContent = 'Email is required.'; return; }
+  if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  const { error } = await sb.auth.signUp({ email, password: pass });
+  if (error) { errEl.textContent = error.message; return; }
+  errEl.style.color = 'var(--success)';
+  errEl.textContent = 'Check your email to confirm your account, then sign in.';
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  currentUser = null;
+  words = [];
+  updateBadge();
+  document.getElementById('auth-user').style.display = 'none';
+  document.getElementById('auth-gate').style.display = 'flex';
+}
+
+// Offer to import words that were previously saved to localStorage
+async function migrateLocalStorage() {
+  const stored = localStorage.getItem('jp_vocab');
+  if (!stored) return;
+  const old = sanitizeStoredWords(JSON.parse(stored));
+  if (!old.length) return;
+  if (!confirm(`You have ${old.length} word(s) saved locally. Import them into your account?`)) return;
+  const rows = old.map(w => ({ ...toDbRow(w), user_id: currentUser.id }));
+  const { error } = await sb.from('words').insert(rows);
+  if (error) { showToast('Import failed: ' + error.message); return; }
+  localStorage.removeItem('jp_vocab');
+  await loadWords();
+  renderBank();
+  showToast(`${old.length} word(s) imported to your account!`);
+}
+
+// React to auth state changes (sign-in, sign-out, token refresh)
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session) {
+    currentUser = session.user;
+    // Show email in nav
+    document.getElementById('auth-email-display').textContent = session.user.email;
+    document.getElementById('auth-user').style.display = '';
+    // Hide auth gate, show app
+    document.getElementById('auth-gate').style.display = 'none';
+    // Load words from DB
+    await loadWords();
+    // On first sign-in, offer to import any localStorage words
+    if (event === 'SIGNED_IN') {
+      const stored = localStorage.getItem('jp_vocab');
+      if (stored) {
+        try {
+          const old = JSON.parse(stored);
+          if (Array.isArray(old) && old.length > 0 && words.length === 0) {
+            setTimeout(migrateLocalStorage, 400);
+          }
+        } catch {}
+      }
+    }
+    renderBank();
+    checkKeyWarning();
+  } else {
+    currentUser = null;
+    words = [];
+    updateBadge();
+    document.getElementById('auth-user').style.display = 'none';
+    document.getElementById('auth-gate').style.display = 'flex';
+  }
+});
 </script>
 </body>
 </html>
